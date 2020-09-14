@@ -24,20 +24,45 @@ def remove_diag(x):
     x_no_diag = x_no_diag.reshape(len(x), len(x) - 1)
     return x_no_diag
 
-def high_dim_probs(points):
+def high_dim_probs(points, desired_perplexity=10, perp_thresh=1):
     points = normalize_points(points)
     probabilities = np.zeros((len(points), len(points)))
     pairwise_dists = pairwise_euclidean(points)
-    # FIXME binary search for sigma
-    sigma_i = np.ones((len(points), 1))
-    numerator = np.exp(-1 * pairwise_dists / (2 * sigma_i)) 
-    # Subtract one so that we're not comparing point to itself in denominator sum
-    denominator = np.sum(np.exp(-1 * pairwise_dists / (2 * sigma_i))) - len(points)
-    assert denominator != 0
-    p_j_given_i = numerator / denominator
-    # Zero out probability from point to itself
-    p_j_given_i -= np.eye(len(p_j_given_i)) * p_j_given_i
-    P = (p_j_given_i + np.transpose(p_j_given_i)) / 2
+    max_sigma, min_sigma = 100, 0
+    sigma = np.ones((len(points), 1))
+    previous_sigma = np.ones((len(points), 1))
+    perplexity_satisfied = False
+
+    # binary search for perplexity
+    for perp_step in range(1000):
+        numerator = np.exp(-1 * pairwise_dists / (2 * sigma ** 2)) 
+        # Subtract one so that we're not comparing point to itself in denominator sum
+        denominator = np.sum(np.exp(-1 * pairwise_dists / (2 * sigma ** 2))) - len(points)
+        assert denominator != 0
+        p_j_given_i = numerator / denominator
+        # Zero out probability from point to itself
+        P = (p_j_given_i + np.transpose(p_j_given_i)) / 2
+        entropy = -1 * np.sum(P * np.log2(P), axis=1)
+        perplexity = np.power(2, entropy)
+        perplexity_satisfied = (np.abs(np.mean(perplexity - np.array(desired_perplexity))) < perp_thresh)
+        print(sigma)
+        print(perplexity)
+        if perplexity_satisfied:
+            print('perplexity satisfied')
+            break
+        if(perp_step == 1):
+            quit()
+        temp = sigma[:]
+        for i, s in enumerate(sigma):
+            if perplexity[i] < desired_perplexity:
+                sigma[i] = (previous_sigma[i] + max_sigma) / 2
+            else:
+                sigma[i] = (previous_sigma[i] + min_sigma) / 2
+
+        previous_sigma = temp
+
+    # Zero out the diagonal
+    P -= np.eye(len(P)) * P
     return P
 
 def low_dim_probs(points):
